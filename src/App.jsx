@@ -272,21 +272,22 @@ export default function App() {
 
           return (
             <Card key={c} className={`${getCategoryTheme(c).cardBg} ${getCategoryTheme(c).border}`}>
-              <CardContent className="p-4 space-y-2">
+              <CardContent className="p-4">
                 <div className="flex items-center gap-2 font-semibold">
                   <span className={`inline-block h-2 w-2 rounded-full ${getCategoryTheme(c).dot}`} />
                   <span className={getCategoryTheme(c).text}>{c}</span>
                 </div>
 
-                <div className="w-full bg-gray-200 h-3 rounded">
-                  <div
-                    className={`${getCategoryTheme(c).bar} h-3 rounded`}
-                    style={{ width: `${Math.min(100, percent)}%` }}
-                  />
-                </div>
-
-                <div className="text-sm">
-                  {percent.toFixed(1)}% ({usedHours.toFixed(1)}h / {totalHours}h)
+                <div className="mt-3">
+                  <div className="w-full bg-gray-200 h-3 rounded">
+                    <div
+                      className={`${getCategoryTheme(c).bar} h-3 rounded`}
+                      style={{ width: `${Math.min(100, percent)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 text-right">
+                    {percent.toFixed(1)}% ({usedHours.toFixed(1)}h / {totalHours}h)
+                  </div>
                 </div>
               </CardContent>
             </Card>
