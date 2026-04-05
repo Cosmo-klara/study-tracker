@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-// ================= IndexedDB =================
 const DB_NAME = "studyDB";
 const STORE_RECORDS = "records";
 const STORE_CONFIG = "config";
@@ -39,7 +38,6 @@ async function setItem(store, item) {
   tx.objectStore(store).put(item);
 }
 
-// ================= Utils =================
 const categories = ["listening", "reading", "writing", "speaking"];
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -53,6 +51,7 @@ function getDateStr(d) {
   return d.toISOString().split("T")[0];
 }
 
+// 有一说一 Github 那个 heatmap 的颜色设计真不赖吧
 function getColor(hours) {
   if (!hours) return "bg-gray-200";
   if (hours < 1) return "bg-green-200";
@@ -100,7 +99,7 @@ function formatClockHM(ts) {
   });
 }
 
-// 🔥 年度 heatmap（过滤非当年日期）
+// 需要注意的地方：要过滤非当年日期，参考 Github 的那个 heatmap，估计是这样做的
 function buildYearWeeks(year) {
   const start = new Date(year, 0, 1);
   const end = new Date(year, 11, 31);
@@ -123,7 +122,6 @@ function buildYearWeeks(year) {
   return weeks;
 }
 
-// ================= App =================
 export default function App() {
   const [records, setRecords] = useState([]);
   const [config, setConfig] = useState({});
@@ -221,7 +219,6 @@ export default function App() {
     };
   }
 
-  // ================= Heatmap Data =================
   const grouped = {};
   records.forEach((r) => {
     if (!grouped[r.logicalDate]) grouped[r.logicalDate] = [];
