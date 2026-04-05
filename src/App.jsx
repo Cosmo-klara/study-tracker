@@ -444,30 +444,41 @@ export default function App() {
           )}
 
           {selectedDate && (
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-2 max-w-7xl mx-auto w-full">
               <h3 className="font-medium">{selectedDate}</h3>
               {(grouped[selectedDate] || [])
                 .slice()
                 .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))
-                .map((r) => (
-                  <div
-                    key={r.id}
-                    className={`border border-l-8 rounded-md p-2 text-sm space-y-1 text-left ${getCategoryTheme(r.category).rowBg} ${getCategoryTheme(r.category).border} ${getCategoryTheme(r.category).borderLeft}`}
-                  >
-                    <div className="font-semibold">
-                      <span className="text-gray-600 font-normal">{formatClockHM(r.startTime)}</span>
-                      <span className={`ml-2 ${getCategoryTheme(r.category).text}`}>
-                        {r.category}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 text-xs">
-                      <div className="min-w-0 truncate text-gray-700">{r.task || ""}</div>
-                      <div className="shrink-0 text-gray-500">
-                        {formatHumanDuration(r.duration)}
+                .map((r) => {
+                  const theme = getCategoryTheme(r.category);
+
+                  return (
+                    <div
+                      key={r.id}
+                      className={`w-full flex items-start gap-4 border border-l-8 rounded-lg px-3 py-2 text-left ${theme.rowBg} ${theme.border} ${theme.borderLeft}`}
+                    >
+                      <span className={`mt-1.5 inline-block h-2.5 w-2.5 rounded-full ${theme.dot}`} />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 leading-5">
+                          <span className="text-sm font-normal text-gray-700">
+                            {formatClockHM(r.startTime)}
+                          </span>
+                          <span className={`text-sm font-semibold ${theme.text}`}>{r.category}</span>
+                        </div>
+
+                        <div className="mt-1 flex items-center justify-between gap-3">
+                          <div className="min-w-0 truncate text-xs text-gray-700 min-h-[1rem]">
+                            {r.task ? r.task : "\u00A0"}
+                          </div>
+                          <div className="shrink-0 text-xs text-gray-500">
+                            {formatHumanDuration(r.duration)}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               {!grouped[selectedDate] && (
                 <div className="text-sm text-gray-500">No study records</div>
               )}
