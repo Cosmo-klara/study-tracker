@@ -41,6 +41,57 @@ async function setItem(store, item) {
 const categories = ["listening", "reading", "writing", "speaking"];
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const categoryTheme = {
+  listening: {
+    bar: "bg-[#D4B0B5]",
+    dot: "bg-[#D4B0B5]",
+    text: "text-[#D4B0B5]",
+    border: "border-[#D4B0B5]/40",
+    cardBg: "bg-[#D4B0B5]/10",
+    rowBg: "bg-[#D4B0B5]/10",
+    borderLeft: "border-l-[#D4B0B5]",
+  },
+  reading: {
+    bar: "bg-[#9CAF88]",
+    dot: "bg-[#9CAF88]",
+    text: "text-[#9CAF88]",
+    border: "border-[#9CAF88]/40",
+    cardBg: "bg-[#9CAF88]/10",
+    rowBg: "bg-[#9CAF88]/10",
+    borderLeft: "border-l-[#9CAF88]",
+  },
+  writing: {
+    bar: "bg-[#6E7F9C]",
+    dot: "bg-[#6E7F9C]",
+    text: "text-[#6E7F9C]",
+    border: "border-[#6E7F9C]/40",
+    cardBg: "bg-[#6E7F9C]/10",
+    rowBg: "bg-[#6E7F9C]/10",
+    borderLeft: "border-l-[#6E7F9C]",
+  },
+  speaking: {
+    bar: "bg-[#B5A89C]",
+    dot: "bg-[#B5A89C]",
+    text: "text-[#B5A89C]",
+    border: "border-[#B5A89C]/40",
+    cardBg: "bg-[#B5A89C]/10",
+    rowBg: "bg-[#B5A89C]/10",
+    borderLeft: "border-l-[#B5A89C]",
+  },
+};
+
+function getCategoryTheme(cat) {
+  return categoryTheme[cat] || {
+    bar: "bg-gray-400",
+    dot: "bg-gray-400",
+    text: "text-gray-700",
+    border: "border-gray-200",
+    cardBg: "bg-white",
+    rowBg: "bg-white",
+    borderLeft: "border-l-gray-400",
+  };
+}
+
 function getLogicalDate(ts) {
   const d = new Date(ts);
   if (d.getHours() < 6) d.setDate(d.getDate() - 1);
@@ -124,7 +175,6 @@ function buildYearWeeks(year) {
 
 export default function App() {
   const [records, setRecords] = useState([]);
-  const [config, setConfig] = useState({});
 
   const [running, setRunning] = useState(false);
   const [startTime, setStartTime] = useState(null);
@@ -150,18 +200,7 @@ export default function App() {
 
   async function init() {
     const rec = await getAll(STORE_RECORDS);
-    const cfgArr = await getAll(STORE_CONFIG);
-
-    const cfg = {};
-    cfgArr.forEach((c) => (cfg[c.key] = c.value));
-
-    categories.forEach((c) => {
-      const key = `dailyHours:${c}`;
-      if (cfg[key] == null) cfg[key] = 8;
-    });
-
     setRecords(rec);
-    setConfig(cfg);
   }
 
   async function addRecord(record) {
@@ -195,27 +234,20 @@ export default function App() {
     setTask("");
   }
 
-  async function setConfigValue(key, value) {
-    setConfig((c) => ({ ...c, [key]: value }));
-    await setItem(STORE_CONFIG, { key, value });
-  }
+  function calc(cat) {
+    const initialHours = cat === "listening" ? 88 : 0;
 
-  function calc(cat, monthKey, daysInMonth) {
-    const usedSeconds = records
-      .filter((r) => r.category === cat && r.logicalDate?.slice(0, 7) === monthKey)
-      .reduce((s, r) => s + r.duration, 0);
+    const usedSeconds =
+      initialHours * 3600 +
+      records.filter((r) => r.category === cat).reduce((s, r) => s + r.duration, 0);
 
-    const dailyKey = `dailyHours:${cat}`;
-    const dailyHours = Number(config[dailyKey] ?? 8);
-    const totalHours = dailyHours * daysInMonth;
+    const totalHours = 96;
     const totalSeconds = totalHours * 3600;
 
     return {
       percent: totalSeconds ? (usedSeconds / totalSeconds) * 100 : 0,
       usedHours: usedSeconds / 3600,
       totalHours,
-      dailyHours,
-      dailyKey,
     };
   }
 
@@ -234,103 +266,78 @@ export default function App() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Progress Bar</h1>
-
-
-      <div className="flex justify-end">
-        <div className="text-sm text-gray-500">
-          {(() => {
-            const now = new Date();
-            const monthKey = getMonthKeyFromDate(now);
-            const days = getDaysInMonth(now.getFullYear(), now.getMonth());
-            return `${monthKey} (${days} days)`;
-          })()}
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {(() => {
-          const now = new Date();
-          const monthKey = getMonthKeyFromDate(now);
-          const daysInMonth = getDaysInMonth(now.getFullYear(), now.getMonth());
+        {categories.map((c) => {
+          const { percent, usedHours, totalHours } = calc(c);
 
-          return categories.map((c) => {
-            const { percent, usedHours, totalHours, dailyHours, dailyKey } = calc(
-              c,
-              monthKey,
-              daysInMonth,
-            );
+          return (
+            <Card key={c} className={`${getCategoryTheme(c).cardBg} ${getCategoryTheme(c).border}`}>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-2 font-semibold">
+                  <span className={`inline-block h-2 w-2 rounded-full ${getCategoryTheme(c).dot}`} />
+                  <span className={getCategoryTheme(c).text}>{c}</span>
+                </div>
 
-            return (
-              <Card key={c}>
-                <CardContent className="p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold">{c}</div>
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
-                      <span>h/day</span>
-                      <input
-                        value={Number.isFinite(dailyHours) ? dailyHours : 8}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          const n = v === "" ? "" : Number(v);
-                          setConfig((cfg) => ({ ...cfg, [dailyKey]: n }));
-                        }}
-                        onBlur={(e) => {
-                          const n = Number(e.target.value);
-                          setConfigValue(dailyKey, Number.isFinite(n) ? n : 8);
-                        }}
-                        className="w-16 border rounded px-2 py-1 text-right"
-                        inputMode="decimal"
-                      />
-                    </div>
-                  </div>
+                <div className="w-full bg-gray-200 h-3 rounded">
+                  <div
+                    className={`${getCategoryTheme(c).bar} h-3 rounded`}
+                    style={{ width: `${Math.min(100, percent)}%` }}
+                  />
+                </div>
 
-                  <div className="w-full bg-gray-200 h-3 rounded">
-                    <div
-                      className="bg-blue-500 h-3 rounded"
-                      style={{ width: `${Math.min(100, percent)}%` }}
-                    />
-                  </div>
-
-                  <div className="text-sm">
-                    {percent.toFixed(1)}% ({usedHours.toFixed(1)}h / {totalHours.toFixed(0)}h)
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          });
-        })()}
+                <div className="text-sm">
+                  {percent.toFixed(1)}% ({usedHours.toFixed(1)}h / {totalHours}h)
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Card>
-        <CardContent className="p-4 space-y-2">
+        <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-semibold">Timer</h2>
-            <div className="font-mono text-sm text-gray-600">
+            <div
+              className={`font-mono text-sm px-3 py-1 rounded-full border ${
+                running
+                  ? "bg-black text-white border-black"
+                  : "bg-white text-gray-700 border-gray-200"
+              }`}
+            >
               {formatDuration(running && startTime ? (nowMs - startTime) / 1000 : 0)}
             </div>
           </div>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            disabled={running}
-            className="border px-2 py-1 rounded disabled:opacity-60"
-          >
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <input
-            placeholder="Task Content"
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            className="border px-2 py-1"
-          />
-          {!running ? (
-            <Button onClick={start}>Start</Button>
-          ) : (
-            <Button onClick={stop}>Stop</Button>
-          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={running}
+              className="border px-3 py-2 rounded-md disabled:opacity-60 bg-white"
+            >
+              {categories.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+
+            <input
+              placeholder="Task Content"
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
+              className="border px-3 py-2 rounded-md md:col-span-2"
+            />
+          </div>
+
+          <div className="flex justify-end">
+            {!running ? (
+              <Button onClick={start} className="px-4">Start</Button>
+            ) : (
+              <Button onClick={stop} className="px-4 bg-red-600 hover:bg-red-500">
+                Stop
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -443,12 +450,18 @@ export default function App() {
                 .slice()
                 .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))
                 .map((r) => (
-                  <div key={r.id} className="border p-2 text-sm space-y-1 text-left">
-                    <div className="font-medium">
-                      {formatClockHM(r.startTime)} {r.category}
+                  <div
+                    key={r.id}
+                    className={`border border-l-8 rounded-md p-2 text-sm space-y-1 text-left ${getCategoryTheme(r.category).rowBg} ${getCategoryTheme(r.category).border} ${getCategoryTheme(r.category).borderLeft}`}
+                  >
+                    <div className="font-semibold">
+                      <span className="text-gray-600 font-normal">{formatClockHM(r.startTime)}</span>
+                      <span className={`ml-2 ${getCategoryTheme(r.category).text}`}>
+                        {r.category}
+                      </span>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 truncate">{r.task || ""}</div>
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0 truncate text-gray-700">{r.task || ""}</div>
                       <div className="shrink-0 text-gray-500">
                         {formatHumanDuration(r.duration)}
                       </div>
