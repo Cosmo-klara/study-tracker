@@ -60,6 +60,46 @@ function getColor(hours) {
   return "bg-green-600";
 }
 
+function getMonthKeyFromDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+function getDaysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+  const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function formatHumanDuration(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h}h${m}min`;
+  }
+
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${m}min${ss}s`;
+}
+
+function formatClockHM(ts) {
+  if (!ts) return "--:--";
+  return new Date(ts).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 // 🔥 年度 heatmap（过滤非当年日期）
 function buildYearWeeks(year) {
   const start = new Date(year, 0, 1);
@@ -90,16 +130,25 @@ export default function App() {
 
   const [running, setRunning] = useState(false);
   const [startTime, setStartTime] = useState(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [lockedCategory, setLockedCategory] = useState(null);
   const [category, setCategory] = useState("listening");
   const [task, setTask] = useState("");
 
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => getLogicalDate(Date.now()));
   const [year, setYear] = useState(new Date().getFullYear());
   const [tooltip, setTooltip] = useState(null);
 
   useEffect(() => {
     init();
   }, []);
+
+  useEffect(() => {
+    if (!running) return;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [running]);
 
   async function init() {
     const rec = await getAll(STORE_RECORDS);
@@ -109,7 +158,8 @@ export default function App() {
     cfgArr.forEach((c) => (cfg[c.key] = c.value));
 
     categories.forEach((c) => {
-      if (!cfg[c]) cfg[c] = 336;
+      const key = `dailyHours:${c}`;
+      if (cfg[key] == null) cfg[key] = 8;
     });
 
     setRecords(rec);
@@ -122,8 +172,10 @@ export default function App() {
   }
 
   function start() {
+    setLockedCategory(category);
     setRunning(true);
     setStartTime(Date.now());
+    setNowMs(Date.now());
   }
 
   async function stop() {
@@ -132,7 +184,7 @@ export default function App() {
 
     await addRecord({
       id: crypto.randomUUID(),
-      category,
+      category: lockedCategory ?? category,
       task,
       startTime,
       endTime: end,
@@ -141,20 +193,31 @@ export default function App() {
     });
 
     setRunning(false);
+    setLockedCategory(null);
     setTask("");
   }
 
-  function calc(cat) {
-    const used = records
-      .filter((r) => r.category === cat)
+  async function setConfigValue(key, value) {
+    setConfig((c) => ({ ...c, [key]: value }));
+    await setItem(STORE_CONFIG, { key, value });
+  }
+
+  function calc(cat, monthKey, daysInMonth) {
+    const usedSeconds = records
+      .filter((r) => r.category === cat && r.logicalDate?.slice(0, 7) === monthKey)
       .reduce((s, r) => s + r.duration, 0);
 
-    const total = (config[cat] || 336) * 3600;
+    const dailyKey = `dailyHours:${cat}`;
+    const dailyHours = Number(config[dailyKey] ?? 8);
+    const totalHours = dailyHours * daysInMonth;
+    const totalSeconds = totalHours * 3600;
 
     return {
-      percent: (used / total) * 100,
-      used: used / 3600,
-      total: config[cat] || 336,
+      percent: totalSeconds ? (usedSeconds / totalSeconds) * 100 : 0,
+      usedHours: usedSeconds / 3600,
+      totalHours,
+      dailyHours,
+      dailyKey,
     };
   }
 
@@ -174,19 +237,94 @@ export default function App() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Study Tracker Pro</h1>
+      <h1 className="text-2xl font-bold">Progress Bar</h1>
 
-      {/* Timer */}
+
+      <div className="flex justify-end">
+        <div className="text-sm text-gray-500">
+          {(() => {
+            const now = new Date();
+            const monthKey = getMonthKeyFromDate(now);
+            const days = getDaysInMonth(now.getFullYear(), now.getMonth());
+            return `${monthKey} (${days} days)`;
+          })()}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {(() => {
+          const now = new Date();
+          const monthKey = getMonthKeyFromDate(now);
+          const daysInMonth = getDaysInMonth(now.getFullYear(), now.getMonth());
+
+          return categories.map((c) => {
+            const { percent, usedHours, totalHours, dailyHours, dailyKey } = calc(
+              c,
+              monthKey,
+              daysInMonth,
+            );
+
+            return (
+              <Card key={c}>
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold">{c}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <span>h/day</span>
+                      <input
+                        value={Number.isFinite(dailyHours) ? dailyHours : 8}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const n = v === "" ? "" : Number(v);
+                          setConfig((cfg) => ({ ...cfg, [dailyKey]: n }));
+                        }}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          setConfigValue(dailyKey, Number.isFinite(n) ? n : 8);
+                        }}
+                        className="w-16 border rounded px-2 py-1 text-right"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full bg-gray-200 h-3 rounded">
+                    <div
+                      className="bg-blue-500 h-3 rounded"
+                      style={{ width: `${Math.min(100, percent)}%` }}
+                    />
+                  </div>
+
+                  <div className="text-sm">
+                    {percent.toFixed(1)}% ({usedHours.toFixed(1)}h / {totalHours.toFixed(0)}h)
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          });
+        })()}
+      </div>
+
       <Card>
         <CardContent className="p-4 space-y-2">
-          <h2 className="font-semibold">Timer</h2>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold">Timer</h2>
+            <div className="font-mono text-sm text-gray-600">
+              {formatDuration(running && startTime ? (nowMs - startTime) / 1000 : 0)}
+            </div>
+          </div>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={running}
+            className="border px-2 py-1 rounded disabled:opacity-60"
+          >
             {categories.map((c) => (
               <option key={c}>{c}</option>
             ))}
           </select>
           <input
-            placeholder="Task"
+            placeholder="Task Content"
             value={task}
             onChange={(e) => setTask(e.target.value)}
             className="border px-2 py-1"
@@ -198,29 +336,6 @@ export default function App() {
           )}
         </CardContent>
       </Card>
-
-      {/* Progress */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {categories.map((c) => {
-          const { percent, used, total } = calc(c);
-          return (
-            <Card key={c}>
-              <CardContent className="p-4 space-y-2">
-                <div className="font-semibold">{c}</div>
-                <div className="w-full bg-gray-200 h-3 rounded">
-                  <div
-                    className="bg-blue-500 h-3 rounded"
-                    style={{ width: `${percent}%` }}
-                  />
-                </div>
-                <div className="text-sm">
-                  {percent.toFixed(1)}% ({used.toFixed(1)}h / {total}h)
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
 
       {/* Heatmap */}
       <Card>
@@ -234,32 +349,34 @@ export default function App() {
             </div>
           </div>
 
-          {/* Month labels */}
-          <div className="flex ml-10 mb-1 text-xs text-gray-500">
-            {weeks.map((week, i) => {
-              const firstDay = week[0];
-              const show = firstDay.getDate() <= 7;
-              return (
-                <div key={i} className="w-4 mr-1">
-                  {show ? firstDay.toLocaleString("default", { month: "short" }) : ""}
+          <div className="overflow-x-auto">
+            <div className="w-fit mx-auto">
+              {/* Month labels */}
+              <div className="flex ml-10 mb-1 text-xs text-gray-500">
+                {weeks.map((week, i) => {
+                  const firstDay = week[0];
+                  const show = firstDay.getDate() <= 7;
+                  return (
+                    <div key={i} className="w-4 mr-1">
+                      {show ? firstDay.toLocaleString("default", { month: "short" }) : ""}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex">
+                <div className="flex flex-col justify-between text-xs mr-2 text-gray-500">
+                  {weekDays.map((d) => (
+                    <div key={d} className="h-4">{d}</div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
 
-          <div className="flex">
-            <div className="flex flex-col justify-between text-xs mr-2 text-gray-500">
-              {weekDays.map((d) => (
-                <div key={d} className="h-4">{d}</div>
-              ))}
-            </div>
-
-            <div className="flex gap-1 overflow-x-auto">
-              {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-1">
-                  {week.map((day, di) => {
-                    const dateStr = getDateStr(day);
-                    const isCurrentYear = day.getFullYear() === year;
+                <div className="flex gap-1">
+                  {weeks.map((week, wi) => (
+                    <div key={wi} className="flex flex-col gap-1">
+                      {week.map((day, di) => {
+                        const dateStr = getDateStr(day);
+                        const isCurrentYear = day.getFullYear() === year;
 
                     if (!isCurrentYear) {
                       return <div key={di} className="w-4 h-4 bg-transparent" />;
@@ -277,7 +394,19 @@ export default function App() {
                     return (
                       <div
                         key={di}
-                        onMouseEnter={() => setTooltip({ dateStr, total, breakdown })}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setTooltip({
+                            dateStr,
+                            total,
+                            breakdown,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height,
+                          });
+                        }}
+                        onMouseMove={(e) => {
+                          setTooltip((t) => (t ? { ...t, x: e.clientX, y: e.clientY } : t));
+                        }}
                         onMouseLeave={() => setTooltip(null)}
                         onClick={() => setSelectedDate(dateStr)}
                         className={`w-4 h-4 cursor-pointer ${getColor(total)}`}
@@ -288,10 +417,18 @@ export default function App() {
               ))}
             </div>
           </div>
+            </div>
+          </div>
 
-          {/* Tooltip */}
           {tooltip && (
-            <div className="mt-3 text-sm border p-2 bg-white shadow w-fit">
+            <div
+              className="fixed z-50 text-sm border p-2 bg-white shadow w-fit pointer-events-none"
+              style={{
+                left: tooltip.x,
+                top: tooltip.y,
+                transform: "translate(12px, 12px)",
+              }}
+            >
               <div className="font-medium">{tooltip.dateStr}</div>
               <div>Total: {tooltip.total.toFixed(2)}h</div>
               {categories.map((c) => (
@@ -305,11 +442,22 @@ export default function App() {
           {selectedDate && (
             <div className="mt-4 space-y-2">
               <h3 className="font-medium">{selectedDate}</h3>
-              {(grouped[selectedDate] || []).map((r) => (
-                <div key={r.id} className="border p-2 text-sm">
-                  {r.category} | {r.task} | {(r.duration / 60).toFixed(1)} min
-                </div>
-              ))}
+              {(grouped[selectedDate] || [])
+                .slice()
+                .sort((a, b) => (b.startTime || 0) - (a.startTime || 0))
+                .map((r) => (
+                  <div key={r.id} className="border p-2 text-sm space-y-1 text-left">
+                    <div className="font-medium">
+                      {formatClockHM(r.startTime)} {r.category}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 truncate">{r.task || ""}</div>
+                      <div className="shrink-0 text-gray-500">
+                        {formatHumanDuration(r.duration)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               {!grouped[selectedDate] && (
                 <div className="text-sm text-gray-500">No study records</div>
               )}
