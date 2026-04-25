@@ -1,10 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { BellRing, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 const DB_NAME = "studyDB";
 const STORE_RECORDS = "records";
 const STORE_CONFIG = "config";
+
+// const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+const TWO_HOURS_MS = 5 * 1000;
+const TWO_HOURS_ALERT =
+  "丽芙大人命令你休息一下desuwa，站起来走走透透气，活动活动脖子，喝点水；希望你今天会遇到开心的事";
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -186,9 +192,75 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => getLogicalDate(Date.now()));
   const [year, setYear] = useState(new Date().getFullYear());
   const [tooltip, setTooltip] = useState(null);
+  const twoHourNotifiedRef = useRef(false);
+  const [twoHourToastOpen, setTwoHourToastOpen] = useState(false);
+  const toastTimerRef = useRef(null);
+
+  function playTwoHourChime() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+
+      const ctx = new AudioContext();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch((e) => void e);
+      }
+
+      const master = ctx.createGain();
+      master.gain.value = 0.12;
+      master.connect(ctx.destination);
+
+      const beep = (at, freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, at);
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(1, at + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start(at);
+        osc.stop(at + 0.2);
+      };
+
+      const t0 = ctx.currentTime;
+      beep(t0, 880);
+      beep(t0 + 0.25, 659.25);
+
+      setTimeout(() => {
+        ctx.close?.().catch((e) => void e);
+      }, 1000);
+    } catch (e) {
+      void e;
+    }
+  }
+
+  function showTwoHourToast() {
+    playTwoHourChime();
+    setTwoHourToastOpen(true);
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = setTimeout(() => {
+      setTwoHourToastOpen(false);
+      toastTimerRef.current = null;
+    }, 20000);
+  }
 
   useEffect(() => {
     init();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -197,6 +269,16 @@ export default function App() {
     const id = setInterval(() => setNowMs(Date.now()), 250);
     return () => clearInterval(id);
   }, [running]);
+
+  useEffect(() => {
+    if (!running || !startTime) return;
+    if (twoHourNotifiedRef.current) return;
+
+    if (nowMs - startTime >= TWO_HOURS_MS) {
+      twoHourNotifiedRef.current = true;
+      showTwoHourToast();
+    }
+  }, [running, startTime, nowMs]);
 
   async function init() {
     const rec = await getAll(STORE_RECORDS);
@@ -209,6 +291,12 @@ export default function App() {
   }
 
   function start() {
+    twoHourNotifiedRef.current = false;
+    setTwoHourToastOpen(false);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
     setLockedCategory(category);
     setRunning(true);
     setStartTime(Date.now());
@@ -232,6 +320,12 @@ export default function App() {
     setRunning(false);
     setLockedCategory(null);
     setTask("");
+    twoHourNotifiedRef.current = false;
+    setTwoHourToastOpen(false);
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
   }
 
   function calc(cat) {
@@ -266,6 +360,49 @@ export default function App() {
 
   return (
     <div className="p-6 space-y-6">
+      {twoHourToastOpen && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-amber-200 border-l-4 border-l-amber-400 bg-white shadow-xl"
+        >
+          <div className="flex items-start gap-3 p-4">
+            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <BellRing className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gray-900">温馨提醒</div>
+                  <div className="mt-1 text-sm leading-6 text-gray-700">{TWO_HOURS_ALERT}</div>
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="关闭提示"
+                  onClick={() => {
+                    setTwoHourToastOpen(false);
+                    if (toastTimerRef.current) {
+                      clearTimeout(toastTimerRef.current);
+                      toastTimerRef.current = null;
+                    }
+                  }}
+                  className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                <span>已连续学习 2 小时</span>
+                <span>自动关闭</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {categories.map((c) => {
           const { percent, usedHours, totalHours } = calc(c);
