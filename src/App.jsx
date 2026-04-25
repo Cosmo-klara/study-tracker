@@ -7,8 +7,8 @@ const DB_NAME = "studyDB";
 const STORE_RECORDS = "records";
 const STORE_CONFIG = "config";
 
-// const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-const TWO_HOURS_MS = 5 * 1000;
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+// const TWO_HOURS_MS = 5 * 1000;
 const TWO_HOURS_ALERT =
   "丽芙大人命令你休息一下desuwa，站起来走走透透气，活动活动脖子，喝点水；希望你今天会遇到开心的事";
 
