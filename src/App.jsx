@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { BellRing, X } from "lucide-react";
+import { BellRing, PartyPopper, X } from "lucide-react";
+import birthdayBg from "@/assets/4.png";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +12,25 @@ const TWO_HOURS_MS = 1.5 * 60 * 60 * 1000;
 // const TWO_HOURS_MS = 3 * 1000;
 const TWO_HOURS_ALERT =
   "丽芙大人命令你休息一下desuwa，站起来走走透透气，活动活动脖子，喝点水；希望你今天会遇到开心的事";
+
+const DAILY_LIMIT_SECONDS = 7.5 * 3600;
+// const DAILY_LIMIT_SECONDS = 6;
+const DAILY_LIMIT_ALERT =
+  "今天已经学了7.5小时啦，休息下，躺在床上放空一下，今天也已经很努力了，做的很好了。\n\n照顾好自己喵，丽芙在挂念着你";
+
+const BIRTHDAY_MONTH = 5;
+const BIRTHDAY_DAY = 17;
+const BIRTHDAY_ALERT = `Happy birthday! 今天一定要开开心心的喵
+       ☆
+    ☆☆☆☆
+   ╭┻┻┻┻┻┻┻┻╮
+   ┃╱╲╱╲╱╲╱╲┃
+  ╭┻━━━━━━━━┻╮
+  ┃╱╲╱╲╱╲╱╲╱╲┃
+  ┗━━━━━━━━━━┛
+希望明年这时候会变得更好, 希望那时候我也还陪着你.
+然后, 有什么愿望是芙拉a梦能实现的吗? 有的话请直白地和芙拉a梦说吧
+`;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -35,6 +55,16 @@ async function getAll(store) {
   return new Promise((res) => {
     const req = tx.objectStore(store).getAll();
     req.onsuccess = () => res(req.result);
+  });
+}
+
+async function getKey(store, key) {
+  const db = await openDB();
+  const tx = db.transaction(store, "readonly");
+  return new Promise((res) => {
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => res(null);
   });
 }
 
@@ -196,6 +226,34 @@ export default function App() {
   const [twoHourToastOpen, setTwoHourToastOpen] = useState(false);
   const toastTimerRef = useRef(null);
 
+  const dailyNotifiedDateRef = useRef(null);
+  const [dailyToastOpen, setDailyToastOpen] = useState(false);
+  const dailyToastTimerRef = useRef(null);
+
+  const [birthdayOpen, setBirthdayOpen] = useState(false);
+  const birthdayCheckRunningRef = useRef(false);
+  const birthdayOptOutKeyRef = useRef(null);
+  const birthdayOpenRef = useRef(false);
+  const birthdayDismissedThisSessionRef = useRef(false);
+
+  useEffect(() => {
+    birthdayOpenRef.current = birthdayOpen;
+  }, [birthdayOpen]);
+
+  function closeBirthday() {
+    birthdayDismissedThisSessionRef.current = true;
+    setBirthdayOpen(false);
+  }
+
+  async function optOutBirthday() {
+    const key = birthdayOptOutKeyRef.current;
+    if (key) {
+      await setItem(STORE_CONFIG, { key, value: true, ts: Date.now() });
+    }
+    birthdayDismissedThisSessionRef.current = true;
+    setBirthdayOpen(false);
+  }
+
   function playTwoHourChime() {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -247,7 +305,21 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => {
       setTwoHourToastOpen(false);
       toastTimerRef.current = null;
-    }, 10000);
+    }, 15000);
+  }
+
+  function showDailyToast() {
+    playTwoHourChime();
+    setDailyToastOpen(true);
+
+    if (dailyToastTimerRef.current) {
+      clearTimeout(dailyToastTimerRef.current);
+    }
+
+    dailyToastTimerRef.current = setTimeout(() => {
+      setDailyToastOpen(false);
+      dailyToastTimerRef.current = null;
+    }, 15000);
   }
 
   useEffect(() => {
@@ -255,10 +327,58 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const checkBirthday = async () => {
+      if (birthdayCheckRunningRef.current) return;
+      birthdayCheckRunningRef.current = true;
+
+      try {
+        if (birthdayOpenRef.current) return;
+        if (birthdayDismissedThisSessionRef.current) return;
+
+        const now = new Date();
+        const isBirthday =
+          now.getMonth() + 1 === BIRTHDAY_MONTH && now.getDate() === BIRTHDAY_DAY;
+
+        if (!isBirthday) return;
+
+        const y = now.getFullYear();
+        const key = `birthdayOptOut-${y}-${String(BIRTHDAY_MONTH).padStart(2, "0")}-${String(
+          BIRTHDAY_DAY
+        ).padStart(2, "0")}`;
+
+        birthdayOptOutKeyRef.current = key;
+
+        const existing = await getKey(STORE_CONFIG, key);
+        if (existing?.value) return;
+
+        playTwoHourChime();
+        setBirthdayOpen(true);
+      } finally {
+        birthdayCheckRunningRef.current = false;
+      }
+    };
+
+    checkBirthday();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkBirthday();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
+      }
+      if (dailyToastTimerRef.current) {
+        clearTimeout(dailyToastTimerRef.current);
+        dailyToastTimerRef.current = null;
       }
     };
   }, []);
@@ -279,6 +399,24 @@ export default function App() {
       showTwoHourToast();
     }
   }, [running, startTime, nowMs]);
+
+  useEffect(() => {
+    const today = getLogicalDate(Date.now());
+    if (dailyNotifiedDateRef.current === today) return;
+
+    let totalSeconds = records
+      .filter((r) => r.logicalDate === today)
+      .reduce((s, r) => s + (r.duration || 0), 0);
+
+    if (running && startTime && getLogicalDate(startTime) === today) {
+      totalSeconds += Math.max(0, (nowMs - startTime) / 1000);
+    }
+
+    if (totalSeconds >= DAILY_LIMIT_SECONDS) {
+      dailyNotifiedDateRef.current = today;
+      showDailyToast();
+    }
+  }, [records, running, startTime, nowMs]);
 
   async function init() {
     const rec = await getAll(STORE_RECORDS);
@@ -360,46 +498,143 @@ export default function App() {
 
   return (
     <div className="p-6 space-y-6">
-      {twoHourToastOpen && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-4 right-4 z-50 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-amber-200 border-l-4 border-l-amber-400 bg-white shadow-xl"
-        >
-          <div className="flex items-start gap-3 p-4">
-            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-              <BellRing className="h-5 w-5" />
-            </div>
+      {birthdayOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={closeBirthday} />
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-900">温馨提醒</div>
-                  <div className="mt-1 text-sm leading-6 text-gray-700">{TWO_HOURS_ALERT}</div>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-[min(46rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-white/25 bg-white/20 shadow-2xl backdrop-blur-xl bg-cover bg-center text-left"
+            style={{ backgroundImage: `url(${birthdayBg})` }}
+          >
+            <div className="absolute inset-0 bg-black/40" />
+
+            <div className="relative flex items-start justify-between gap-4 p-6 sm:p-10">
+              <div className="flex items-start gap-4">
+                <div className="mt-0.5 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-white backdrop-blur">
+                  <PartyPopper className="h-7 w-7" />
                 </div>
 
-                <button
-                  type="button"
-                  aria-label="关闭提示"
-                  onClick={() => {
-                    setTwoHourToastOpen(false);
-                    if (toastTimerRef.current) {
-                      clearTimeout(toastTimerRef.current);
-                      toastTimerRef.current = null;
-                    }
-                  }}
-                  className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="min-w-0">
+                  <div className="text-2xl font-semibold text-white">生日祝福</div>
+                  <div className="mt-4 whitespace-pre-wrap font-mono text-base leading-7 text-white/90 text-left">
+                    {BIRTHDAY_ALERT}
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                <span>已连续学习 90 分钟</span>
-                <span>自动关闭</span>
-              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={closeBirthday}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="relative flex items-center justify-end gap-3 bg-black/20 px-6 py-4 sm:px-10">
+              <Button onClick={optOutBirthday} className="px-6">
+                不再显示
+              </Button>
+              <Button onClick={closeBirthday} className="px-6">
+                收到啦
+              </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {(twoHourToastOpen || dailyToastOpen) && (
+        <div className="fixed bottom-4 right-4 z-50 space-y-3">
+          {twoHourToastOpen && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-amber-200 border-l-4 border-l-amber-400 bg-white shadow-xl"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <BellRing className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900">温馨提醒</div>
+                      <div className="mt-1 text-sm leading-6 text-gray-700">{TWO_HOURS_ALERT}</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="关闭提示"
+                      onClick={() => {
+                        setTwoHourToastOpen(false);
+                        if (toastTimerRef.current) {
+                          clearTimeout(toastTimerRef.current);
+                          toastTimerRef.current = null;
+                        }
+                      }}
+                      className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                    <span>已连续学习 90 分钟</span>
+                    <span>自动关闭</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {dailyToastOpen && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-emerald-200 border-l-4 border-l-emerald-400 bg-white shadow-xl"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <BellRing className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900">今日学习提醒</div>
+                      <div className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-700">
+                        {DAILY_LIMIT_ALERT}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="关闭提示"
+                      onClick={() => {
+                        setDailyToastOpen(false);
+                        if (dailyToastTimerRef.current) {
+                          clearTimeout(dailyToastTimerRef.current);
+                          dailyToastTimerRef.current = null;
+                        }
+                      }}
+                      className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                    <span>今日累计 ≥ 7.5 小时</span>
+                    <span>自动关闭</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
