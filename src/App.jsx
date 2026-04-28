@@ -7,8 +7,8 @@ const DB_NAME = "studyDB";
 const STORE_RECORDS = "records";
 const STORE_CONFIG = "config";
 
-const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-// const TWO_HOURS_MS = 5 * 1000;
+const TWO_HOURS_MS = 1.5 * 60 * 60 * 1000;
+// const TWO_HOURS_MS = 3 * 1000;
 const TWO_HOURS_ALERT =
   "丽芙大人命令你休息一下desuwa，站起来走走透透气，活动活动脖子，喝点水；希望你今天会遇到开心的事";
 
@@ -247,7 +247,7 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => {
       setTwoHourToastOpen(false);
       toastTimerRef.current = null;
-    }, 20000);
+    }, 10000);
   }
 
   useEffect(() => {
@@ -395,7 +395,7 @@ export default function App() {
               </div>
 
               <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                <span>已连续学习 2 小时</span>
+                <span>已连续学习 90 分钟</span>
                 <span>自动关闭</span>
               </div>
             </div>
